@@ -101,7 +101,26 @@ namespace RayTracer1
             foreach (Light light in lights)
             {
                 Vector3 light_dir = Vector3.Normalize(light.position - point);
+                float light_distance = Norm(light.position - point);
 
+                Vector3 shadow_orig;
+                // checking if the point lies in the shadow of the llight. This moves the shadow origin onto the surface of the object.
+                if (Vector3.Dot(light_dir, normal) < 0) {
+                    shadow_orig = Vector3.Subtract(point, Vector3.Multiply(normal, 0.001f));
+                }
+                else
+                {
+                    shadow_orig = Vector3.Add(point, Vector3.Multiply(normal, 0.001f));
+                }
+
+                Vector3 shadow_pt = default, shadow_N = default;
+                Material tmpmaterial = new Material();
+
+                //Skips the current light source if it would be in shadow.
+                if (SceneIntersect(shadow_orig, light_dir, spheres, ref shadow_pt, ref shadow_N, ref tmpmaterial) && Norm(shadow_pt - shadow_orig) < light_distance)
+                {
+                    continue;
+                }
                 diffuse_light_intensity += light.intensity * Math.Max(0.0f, Vector3.Dot(light_dir, normal));
                 specular_light_intensity += (float)Math.Pow(Math.Max(0.0f, Vector3.Dot(
                     -reflect(-light_dir, normal),dir)), material.specular_exponent) * light.intensity;
