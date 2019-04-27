@@ -12,8 +12,8 @@ namespace RayTracer1
         static void Main(string[] args)
         {
             
-            Material ivory =  new Material(new Vector3(0.4f, 0.4f, 0.3f));
-            Material red_rubber = new Material(new Vector3(0.3f, 0.1f, 0.1f));
+            Material ivory =  new Material(new Vector2(0.6f,0.3f), new Vector3(0.4f, 0.4f, 0.3f), 50f);
+            Material red_rubber = new Material(new Vector2(0.9f, 0.1f), new Vector3(0.3f, 0.1f, 0.1f), 10f);
 
             List<Sphere> spheres = new List<Sphere>();
             spheres.Add(new Sphere(new Vector3(-3f, 0f, -16f), 2, ivory));
@@ -23,7 +23,8 @@ namespace RayTracer1
 
             List<Light> lights = new List<Light>();
             lights.Add(new Light(new Vector3(-20f, 20f, 20f), 1.5f));
-
+            lights.Add(new Light(new Vector3(30f, 50f, -25f), 1.8f));
+            lights.Add(new Light(new Vector3(30f, 20f, 30f), 1.7f));
 
 
             Render(spheres.ToArray(), lights.ToArray());
@@ -95,15 +96,32 @@ namespace RayTracer1
                 return new Vector3(0.2f, 0.7f, 0.8f);
             }
 
-            float diffuse_light_intensity = 0;
+            float diffuse_light_intensity = 0, specular_light_intensity = 0;
+
             foreach (Light light in lights)
             {
                 Vector3 light_dir = Vector3.Normalize(light.position - point);
-                diffuse_light_intensity += light.intensity * Math.Max(0.0f, Vector3.Dot(light_dir, normal));
-            }
 
-            return material.diffuse_color * diffuse_light_intensity;
+                diffuse_light_intensity += light.intensity * Math.Max(0.0f, Vector3.Dot(light_dir, normal));
+                specular_light_intensity += (float)Math.Pow(Math.Max(0.0f, Vector3.Dot(
+                    -reflect(-light_dir, normal),dir)), material.specular_exponent) * light.intensity;
+            }
+            
+            //Albedo X is diffuse component and Albedo Y is glossy component
+            return material.diffuse_color * diffuse_light_intensity * material.albedo.X + new Vector3(1f, 1f, 1f) * specular_light_intensity * material.albedo.Y;
         }
+
+        //I is the light direction and N is the normal. It calculates the reflect ray of light.  https://en.wikipedia.org/wiki/Phong_reflection_model
+        static Vector3 reflect(Vector3 I, Vector3 N)
+        {
+            return I - N * 2.0f * (I * N);
+        }
+
+        static float Norm(Vector3 vector)
+        {
+            return (float) Math.Sqrt(Vector3.Dot(vector,vector));
+        }
+
     }
 
     public class Light
@@ -164,15 +182,22 @@ namespace RayTracer1
 
     public class Material
     {
-        public Material(Vector3 color)
+        //Albedo X is diffuse component and Albedo Y is glossy component
+        public Vector2 albedo;
+        public Vector3 diffuse_color = new Vector3();
+        public float specular_exponent;
+        public Material(Vector2 albedo, Vector3 color, float spec)
         {
+            this.albedo = albedo;
             this.diffuse_color = (color);
+            this.specular_exponent = spec;
         }
         public Material()
         {
+            this.albedo = new Vector2(1,0);
             this.diffuse_color = new Vector3();
+            this.specular_exponent = 0;
         }
 
-        public Vector3 diffuse_color = new Vector3();
     }
 }
