@@ -12,14 +12,15 @@ namespace RayTracer1
         static void Main(string[] args)
         {
             
-            Material ivory =  new Material(new Vector2(0.6f,0.3f), new Vector3(0.4f, 0.4f, 0.3f), 50f);
-            Material red_rubber = new Material(new Vector2(0.9f, 0.1f), new Vector3(0.3f, 0.1f, 0.1f), 10f);
+            Material ivory =  new Material(new Vector3(0.6f,0.3f, 0.1f), new Vector3(0.4f, 0.4f, 0.3f), 50f);
+            Material red_rubber = new Material(new Vector3(0.9f, 0.1f, 0.0f), new Vector3(0.3f, 0.1f, 0.1f), 10f);
+            Material mirror = new Material(new Vector3(0.0f, 10.0f, 0.8f), new Vector3(1.0f, 1.0f, 1.0f), 1425.0f);
 
             List<Sphere> spheres = new List<Sphere>();
             spheres.Add(new Sphere(new Vector3(-3f, 0f, -16f), 2, ivory));
-            spheres.Add(new Sphere(new Vector3(-1.0f, -1.5f, -12f), 2, red_rubber));
+            spheres.Add(new Sphere(new Vector3(-1.0f, -1.5f, -12f), 2, mirror));
             spheres.Add(new Sphere(new Vector3(1.5f, -0.5f, -18f), 3, red_rubber));
-            spheres.Add(new Sphere(new Vector3(7f, 5f, -18f), 4, ivory));
+            spheres.Add(new Sphere(new Vector3(7f, 5f, -18f), 4, mirror));
 
             List<Light> lights = new List<Light>();
             lights.Add(new Light(new Vector3(-20f, 20f, 20f), 1.5f));
@@ -30,10 +31,10 @@ namespace RayTracer1
             Render(spheres.ToArray(), lights.ToArray());
         }
 
-        static void Render(Sphere[] spheres, Light[] lights)
+        public static void Render(Sphere[] spheres, Light[] lights)
         {
-            const int width = 1024;
-            const int height = 768;
+            const int width = 1024*4;
+            const int height = 768*4;
             const float fov = (float)Math.PI / 2;
 
             List<Vector3> frameBuffer = new List<Vector3>(width * height);
@@ -46,7 +47,11 @@ namespace RayTracer1
                     float x = ((float)((2 * (i + 0.5) / (float)width - 1) * Math.Tan(fov / 2) * width / (float)height));
                     float y = (float)(-(2 * (j + 0.5) / (float)height - 1) * Math.Tan(fov / 2));
                     //Console.WriteLine($"x={x} y={y}");
-                    Vector3 dir = Vector3.Normalize(new Vector3(x, y, -1)); 
+                    float angle = (float)0;
+                    float new_x = (float)(x * Math.Cos(angle) - y * Math.Cos(angle));
+                    float new_y = (float)(y * Math.Cos(angle) + x * Math.Cos(angle));
+
+                    Vector3 dir = Vector3.Normalize(new Vector3(new_x, new_y, -1)); 
                     frameBuffer[i + j * width] = CastRay(new Vector3(0, 0, 0), dir, spheres, lights);
                 }
             }
@@ -85,22 +90,38 @@ namespace RayTracer1
         }
 
 
-        static Vector3 CastRay(Vector3 orig, Vector3 dir, Sphere[] spheres, Light[] lights)
+        public static Vector3 CastRay(Vector3 orig, Vector3 dir, Sphere[] spheres, Light[] lights, int depth = 0)
         {
             Vector3 point = new Vector3();
             Vector3 normal = new Vector3();
             Material material = new Material();
 
-            if (!SceneIntersect(orig,dir,spheres, ref point, ref normal, ref material))
+            if (depth > 2 || !SceneIntersect(orig,dir,spheres, ref point, ref normal, ref material))
             {
                 return new Vector3(0.2f, 0.7f, 0.8f);
             }
 
-            float diffuse_light_intensity = 0, specular_light_intensity = 0;
 
+            //Calculates reflections
+            Vector3 reflect_dir = reflect(dir, normal);
+            Vector3 reflect_orig;
+            if (Vector3.Dot(reflect_dir, normal) < 0)
+            {
+                reflect_orig = point - (normal * 0.001f);
+            }
+            else
+            {
+                reflect_orig = point + (normal * 0.001f);
+            }
+
+            Vector3 reflect_color = CastRay(reflect_orig, reflect_dir, spheres, lights, depth + 1);
+
+
+            //Calculates diffuse and specular
+            float diffuse_light_intensity = 0, specular_light_intensity = 0;
             foreach (Light light in lights)
             {
-                Vector3 light_dir = Vector3.Normalize(light.position - point);
+                             Vector3 light_dir = Vector3.Normalize(light.position - point);
                 float light_distance = Norm(light.position - point);
 
                 Vector3 shadow_orig;
@@ -127,95 +148,18 @@ namespace RayTracer1
             }
             
             //Albedo X is diffuse component and Albedo Y is glossy component
-            return material.diffuse_color * diffuse_light_intensity * material.albedo.X + new Vector3(1f, 1f, 1f) * specular_light_intensity * material.albedo.Y;
+            return material.diffuse_color * diffuse_light_intensity * material.albedo.X + new Vector3(1f, 1f, 1f) * specular_light_intensity * material.albedo.Y +  reflect_color*material.albedo.Z;
         }
 
         //I is the light direction and N is the normal. It calculates the reflect ray of light.  https://en.wikipedia.org/wiki/Phong_reflection_model
         static Vector3 reflect(Vector3 I, Vector3 N)
         {
-            return I - N * 2.0f * (I * N);
+            return (I-(Vector3.Multiply(2.0f * Vector3.Dot(I, N), N)));
         }
 
         static float Norm(Vector3 vector)
         {
             return (float) Math.Sqrt(Vector3.Dot(vector,vector));
-        }
-
-    }
-
-    public class Light
-    {
-        public Vector3 position;
-        public float intensity;
-        public Light(Vector3 p, float i)
-        {
-            this.position = p;
-            this.intensity = i;
-        }
-
-    }
-
-    public class Sphere
-    {
-        public Vector3 center = new Vector3();
-        public float radius;
-        public Material material;
-
-        public Sphere(Vector3 c, float r, Material m)
-        {
-            this.center = c;
-            this.radius = r;
-            this.material = m;
-        }
-
-        //Origin is origin of ray. Dir is the direction of the ray
-        //http://www.lighthouse3d.com/tutorials/maths/ray-sphere-intersection/
-        public bool RayIntersect(Vector3 orig, Vector3 dir, ref float t0)
-        {
-            Vector3 vpc = Vector3.Subtract(center, orig);  // this is the vector from p to c
-
-            // dot product of vector between p and c and the direction vector of the ray. 
-            // Let us tell if the sphere is infront of the ray or behind.
-            float tca = Vector3.Dot(vpc, dir);
-
-            //The dot product here calucates the length of the vector vpc squared. This may have something to do with projection.
-            float d2 = Vector3.Dot(vpc, vpc) - (tca * tca);
-
-            if (d2 > radius * radius)
-            {
-                return false;
-            }
-            
-            float distToIntercept1 = (float)Math.Sqrt(radius * radius - d2);
-
-            t0 = tca - distToIntercept1;
-            float t1 = tca + distToIntercept1;
-
-            if (t0 < 0) t0 = t1;
-            if (t0 < 0) return false;
-
-            return true;
-
-        }
-    }
-
-    public class Material
-    {
-        //Albedo X is diffuse component and Albedo Y is glossy component
-        public Vector2 albedo;
-        public Vector3 diffuse_color = new Vector3();
-        public float specular_exponent;
-        public Material(Vector2 albedo, Vector3 color, float spec)
-        {
-            this.albedo = albedo;
-            this.diffuse_color = (color);
-            this.specular_exponent = spec;
-        }
-        public Material()
-        {
-            this.albedo = new Vector2(1,0);
-            this.diffuse_color = new Vector3();
-            this.specular_exponent = 0;
         }
 
     }
